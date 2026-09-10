@@ -13,8 +13,23 @@ import {
   Package,
   Trash2,
   Menu,
+  LogOut,
 } from "lucide-react";
-import { supabase } from "./supabaseClient";
+import { db, auth } from "./firebaseClient";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
+import { uploadPhoto, deletePhoto } from "./photoStorage";
 
 const UNITS = ["unit", "box", "kg", "g", "l", "ml", "pack"];
 
@@ -22,22 +37,24 @@ function trimNum(n) {
   return Number.isInteger(n) ? n : Math.round(n * 100) / 100;
 }
 
-function folderFromRow(row) {
-  return { id: row.id, name: row.name, parentId: row.parent_id };
+function folderFromDoc(d) {
+  const data = d.data();
+  return { id: d.id, name: data.name, parentId: data.parentId ?? null };
 }
 
-function itemFromRow(row) {
+function itemFromDoc(d) {
+  const data = d.data();
   return {
-    id: row.id,
-    name: row.name,
-    quantity: row.quantity,
-    unit: row.unit,
-    minLevel: row.min_level,
-    price: row.price,
-    brand: row.brand || "",
-    expiry: row.expiry || "",
-    photos: row.photos || [],
-    folderId: row.folder_id,
+    id: d.id,
+    name: data.name,
+    quantity: data.quantity,
+    unit: data.unit,
+    minLevel: data.minLevel ?? null,
+    price: data.price,
+    brand: data.brand || "",
+    expiry: data.expiry || "",
+    photos: data.photos || [],
+    folderId: data.folderId,
   };
 }
 
@@ -64,20 +81,16 @@ function InventoryApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    supabase
-      .from("folders")
-      .select("*")
-      .then(({ data }) => setFolders((data || []).map(folderFromRow)));
-    supabase
-      .from("items")
-      .select("*")
-      .then(({ data }) => setItems((data || []).map(itemFromRow)));
+    getDocs(collection(db, "folders")).then((snap) => setFolders(snap.docs.map(folderFromDoc)));
+    getDocs(collection(db, "items")).then((snap) => setItems(snap.docs.map(itemFromDoc)));
   }, []);
 
   const [showModal, setShowModal] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null);
   const [confirmingDeleteItem, setConfirmingDeleteItem] = useState(false);
   const [form, setForm] = useState(buildEmptyForm(null));
+  const [saving, setSaving] = useState(false);
+  const originalPhotosRef = useRef([]);
   const [showInlineFolderForm, setShowInlineFolderForm] = useState(false);
   const [inlineFolderName, setInlineFolderName] = useState("");
   const fileInputRef = useRef(null);
@@ -158,19 +171,20 @@ function InventoryApp() {
   }
 
   async function createFolder(name, parentId) {
-    const { data, error } = await supabase
-      .from("folders")
-      .insert({ name: name.trim(), parent_id: parentId || null })
-      .select()
-      .single();
-    if (error) {
-      alert(error.message);
+    try {
+      const trimmedName = name.trim();
+      const docRef = await addDoc(collection(db, "folders"), {
+        name: trimmedName,
+        parentId: parentId || null,
+      });
+      const newFolder = { id: docRef.id, name: trimmedName, parentId: parentId || null };
+      setFolders((fs) => [...fs, newFolder]);
+      if (parentId) expandAncestors(parentId);
+      return newFolder.id;
+    } catch (err) {
+      alert(err.message);
       return null;
     }
-    const newFolder = folderFromRow(data);
-    setFolders((fs) => [...fs, newFolder]);
-    if (parentId) expandAncestors(parentId);
-    return newFolder.id;
   }
 
   function getDescendantFolderIds(id) {
@@ -182,6 +196,7 @@ function InventoryApp() {
   function openAddModal() {
     setEditingItemId(null);
     setForm(buildEmptyForm(currentFolderId));
+    originalPhotosRef.current = [];
     setShowInlineFolderForm(false);
     setInlineFolderName("");
     setConfirmingDeleteItem(false);
@@ -201,6 +216,7 @@ function InventoryApp() {
       photos: item.photos,
       folderId: item.folderId,
     });
+    originalPhotosRef.current = item.photos;
     setShowInlineFolderForm(false);
     setInlineFolderName("");
     setConfirmingDeleteItem(false);
@@ -272,55 +288,45 @@ function InventoryApp() {
 
   async function handleSaveItem() {
     if (!form.name.trim() || !form.folderId) return;
-    const fields = {
-      name: form.name.trim(),
-      quantity: Number(form.quantity) || 0,
-      unit: form.unit,
-      minLevel: form.minLevel === "" ? null : Number(form.minLevel),
-      price: Number(form.price) || 0,
-      brand: form.brand.trim() || null,
-      expiry: form.expiry === "" ? null : form.expiry,
-      photos: form.photos,
-      folderId: form.folderId,
-    };
-    const row = {
-      name: fields.name,
-      quantity: fields.quantity,
-      unit: fields.unit,
-      min_level: fields.minLevel,
-      price: fields.price,
-      brand: fields.brand,
-      expiry: fields.expiry,
-      photos: fields.photos,
-      folder_id: fields.folderId,
-    };
-    if (editingItemId) {
-      const { data, error } = await supabase
-        .from("items")
-        .update(row)
-        .eq("id", editingItemId)
-        .select()
-        .single();
-      if (error) {
-        alert(error.message);
-        return;
+    setSaving(true);
+    try {
+      const photos = await Promise.all(
+        form.photos.map((p) => (p.startsWith("data:") ? uploadPhoto(p) : p))
+      );
+      const removedPhotos = originalPhotosRef.current.filter((url) => !form.photos.includes(url));
+
+      const fields = {
+        name: form.name.trim(),
+        quantity: Number(form.quantity) || 0,
+        unit: form.unit,
+        minLevel: form.minLevel === "" ? null : Number(form.minLevel),
+        price: Number(form.price) || 0,
+        brand: form.brand.trim() || null,
+        expiry: form.expiry === "" ? null : form.expiry,
+        photos,
+        folderId: form.folderId,
+      };
+
+      if (editingItemId) {
+        await updateDoc(doc(db, "items", editingItemId), fields);
+        setItems((its) => its.map((it) => (it.id === editingItemId ? { id: editingItemId, ...fields } : it)));
+      } else {
+        const docRef = await addDoc(collection(db, "items"), fields);
+        setItems((its) => [{ id: docRef.id, ...fields }, ...its]);
       }
-      const updated = itemFromRow(data);
-      setItems((its) => its.map((it) => (it.id === editingItemId ? updated : it)));
-    } else {
-      const { data, error } = await supabase.from("items").insert(row).select().single();
-      if (error) {
-        alert(error.message);
-        return;
-      }
-      const created = itemFromRow(data);
-      setItems((its) => [created, ...its]);
+      removedPhotos.forEach(deletePhoto);
+      closeItemModal();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
     }
-    closeItemModal();
   }
 
   async function handleDeleteItemConfirmed() {
-    await supabase.from("items").delete().eq("id", editingItemId);
+    const item = items.find((it) => it.id === editingItemId);
+    await deleteDoc(doc(db, "items", editingItemId));
+    (item?.photos || []).forEach(deletePhoto);
     setItems((its) => its.filter((it) => it.id !== editingItemId));
     closeItemModal();
   }
@@ -345,7 +351,12 @@ function InventoryApp() {
   async function confirmDeleteFolder() {
     if (!deleteFolderId) return;
     const idsToDelete = [deleteFolderId, ...getDescendantFolderIds(deleteFolderId)];
-    await supabase.from("folders").delete().eq("id", deleteFolderId);
+    const itemsToDelete = items.filter((it) => idsToDelete.includes(it.folderId));
+
+    await Promise.all(idsToDelete.map((id) => deleteDoc(doc(db, "folders", id))));
+    await Promise.all(itemsToDelete.map((it) => deleteDoc(doc(db, "items", it.id))));
+    itemsToDelete.forEach((it) => (it.photos || []).forEach(deletePhoto));
+
     setFolders((fs) => fs.filter((f) => !idsToDelete.includes(f.id)));
     setItems((its) => its.filter((it) => !idsToDelete.includes(it.folderId)));
     if (idsToDelete.includes(currentFolderId)) setCurrentFolderId(null);
@@ -433,12 +444,18 @@ function InventoryApp() {
           </button>
           {rootFolders.map((f) => renderFolderNode(f, 0))}
         </div>
-        <div className="p-2 border-t border-stone-200">
+        <div className="p-2 border-t border-stone-200 space-y-1.5">
           <button
             onClick={openAddFolderModal}
             className="w-full flex items-center justify-center gap-1.5 border border-stone-300 hover:bg-stone-50 text-stone-700 text-sm font-medium px-3 py-2 rounded"
           >
             <FolderPlus size={16} /> New folder
+          </button>
+          <button
+            onClick={() => signOut(auth)}
+            className="w-full flex items-center justify-center gap-1.5 text-stone-500 hover:bg-stone-50 text-sm px-3 py-2 rounded"
+          >
+            <LogOut size={14} /> Sign out
           </button>
         </div>
       </div>
@@ -771,10 +788,10 @@ function InventoryApp() {
                     </button>
                     <button
                       onClick={handleSaveItem}
-                      disabled={!form.name.trim() || !form.folderId}
+                      disabled={!form.name.trim() || !form.folderId || saving}
                       className="bg-teal-700 hover:bg-teal-800 disabled:bg-stone-300 text-white text-sm font-medium px-4 py-2 rounded"
                     >
-                      {editingItemId ? "Save changes" : "Add item"}
+                      {saving ? "Saving…" : editingItemId ? "Save changes" : "Add item"}
                     </button>
                   </div>
                 </>
@@ -929,7 +946,82 @@ function InventoryApp() {
   );
 }
 
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      setError("Incorrect email or password.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-stone-200 flex items-center justify-center p-6">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-lg border border-stone-200 w-full max-w-sm p-6 space-y-4"
+      >
+        <h1 className="text-lg font-semibold text-stone-900">Sign in</h1>
+        <div>
+          <label className="text-xs text-stone-500">Email</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full border border-stone-300 rounded px-2.5 py-2 text-sm mt-1 outline-none focus:border-teal-600"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-stone-500">Password</label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full border border-stone-300 rounded px-2.5 py-2 text-sm mt-1 outline-none focus:border-teal-600"
+          />
+        </div>
+        {error && <div className="text-sm text-red-600">{error}</div>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-stone-300 text-white text-sm font-medium px-4 py-2 rounded"
+        >
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function App() {
+  const [user, setUser] = useState(undefined);
+
+  useEffect(() => onAuthStateChanged(auth, setUser), []);
+
+  if (user === undefined) {
+    return (
+      <div className="min-h-screen bg-stone-200 flex items-center justify-center text-sm text-stone-400">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
   return (
     <div className="min-h-screen bg-stone-200 flex items-center justify-center p-0 sm:p-6">
       <InventoryApp />
