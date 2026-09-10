@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   LayoutDashboard,
   Package,
@@ -46,8 +46,10 @@ export default function Sidebar({
   onSignOut,
 }) {
   const { t } = useSettings();
+  const [foldersOpen, setFoldersOpen] = useState(true);
   const rootFolders = folders.filter((f) => f.parentId === null);
   const childrenOf = (id) => folders.filter((f) => f.parentId === id);
+  const allFoldersActive = view.kind === "folder" && view.folderId === null;
 
   function renderFolderNode(folder, depth) {
     const kids = childrenOf(folder.id);
@@ -105,12 +107,28 @@ export default function Sidebar({
             label={t("nav.dashboard")}
             onClick={() => onSelect({ kind: "dashboard" })}
           />
-          <NavButton
-            active={view.kind === "folder" && view.folderId === null}
-            icon={Package}
-            label={t("nav.allFolders")}
-            onClick={() => onSelect({ kind: "folder", folderId: null })}
-          />
+          <div
+            className={`flex items-center gap-1 rounded mb-1 ${allFoldersActive ? "bg-teal-50" : "hover:bg-stone-50"}`}
+          >
+            <button
+              onClick={() => onSelect({ kind: "folder", folderId: null })}
+              className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-sm min-w-0 ${
+                allFoldersActive ? "text-teal-800 font-medium" : "text-stone-700"
+              }`}
+            >
+              <Package size={15} className={allFoldersActive ? "text-teal-700" : "text-stone-400"} />
+              <span className="flex-1 text-left truncate">{t("nav.allFolders")}</span>
+            </button>
+            {rootFolders.length > 0 && (
+              <button
+                onClick={() => setFoldersOpen((v) => !v)}
+                className="p-1.5 shrink-0 text-stone-400 hover:text-stone-700"
+              >
+                {foldersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+            )}
+          </div>
+          {foldersOpen && rootFolders.map((f) => renderFolderNode(f, 1))}
           <NavButton
             active={view.kind === "expiring"}
             icon={AlertTriangle}
@@ -131,8 +149,6 @@ export default function Sidebar({
             label={t("nav.activity")}
             onClick={() => onSelect({ kind: "activity" })}
           />
-          <div className="border-t border-stone-200 my-2" />
-          {rootFolders.map((f) => renderFolderNode(f, 0))}
         </div>
         <div className="p-2 border-t border-stone-200 space-y-1.5">
           <button

@@ -7,6 +7,7 @@ import { uploadPhoto, deletePhoto, resizePhoto } from "./photoStorage";
 import { identifyItemFromPhotos } from "./gemini";
 import { SettingsProvider, useSettings } from "./lib/i18n.jsx";
 import { trimNum, expiryStatus, csvCell } from "./lib/format.js";
+import { getDescendantFolderIds, folderPath as folderPathOf, flattenFolders as flattenFoldersOf } from "./lib/folders.js";
 import Sidebar from "./components/Sidebar.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ActivityView from "./components/ActivityView.jsx";
@@ -113,26 +114,9 @@ function InventoryApp() {
   const editingItem = editingItemId ? items.find((it) => it.id === editingItemId) : null;
   const currentFolderId = view.kind === "folder" ? view.folderId : null;
 
-  function folderPath(id) {
-    const path = [];
-    let cur = folders.find((f) => f.id === id);
-    while (cur) {
-      path.unshift(cur);
-      cur = folders.find((f) => f.id === cur.parentId);
-    }
-    return path;
-  }
-
-  function flattenFolders(parentId, depth) {
-    return folders
-      .filter((f) => f.parentId === parentId)
-      .flatMap((f) => [{ ...f, depth }, ...flattenFolders(f.id, depth + 1)]);
-  }
-
-  function getDescendantFolderIds(id) {
-    const direct = folders.filter((f) => f.parentId === id).map((f) => f.id);
-    return direct.concat(direct.flatMap(getDescendantFolderIds));
-  }
+  const folderPath = (id) => folderPathOf(folders, id);
+  const flattenFolders = (parentId, depth) => flattenFoldersOf(folders, parentId, depth);
+  const descendantFolderIds = (id) => getDescendantFolderIds(folders, id);
 
   function selectView(v) {
     setView(v);
@@ -164,7 +148,7 @@ function InventoryApp() {
   }
 
   async function confirmDeleteFolder() {
-    const idsToDelete = [deleteFolderId, ...getDescendantFolderIds(deleteFolderId)];
+    const idsToDelete = [deleteFolderId, ...descendantFolderIds(deleteFolderId)];
     const itemsToDelete = items.filter((it) => idsToDelete.includes(it.folderId));
     try {
       await Promise.all([
@@ -413,7 +397,7 @@ function InventoryApp() {
   };
 
   const deletingFolder = deleteFolderId ? folders.find((f) => f.id === deleteFolderId) : null;
-  const deleteIds = deleteFolderId ? [deleteFolderId, ...getDescendantFolderIds(deleteFolderId)] : [];
+  const deleteIds = deleteFolderId ? [deleteFolderId, ...descendantFolderIds(deleteFolderId)] : [];
 
   return (
     <div className="h-screen flex bg-stone-100 text-stone-900 font-sans overflow-hidden">
@@ -498,6 +482,7 @@ function InventoryApp() {
             shoppingItems={shoppingItems}
             expiringItems={expiringItems}
             onOpenItem={openEditModal}
+            onOpenFolder={(id) => selectView({ kind: "folder", folderId: id })}
           />
         )}
       </div>
