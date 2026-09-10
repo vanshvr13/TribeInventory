@@ -1,5 +1,6 @@
 import { ai } from "./firebaseClient";
 import { getGenerativeModel, Schema } from "firebase/ai";
+import { resizePhoto } from "./photoStorage";
 
 const CATEGORY_NONE = "__NONE__";
 
@@ -44,7 +45,8 @@ ${
 
 Return only the structured fields, no extra commentary.`;
 
-  const imageParts = photos.slice(0, 2).map(dataUrlToInlinePart);
+  const compressed = await Promise.all(photos.slice(0, 2).map((p) => resizePhoto(p, 768, 0.7)));
+  const imageParts = compressed.map(dataUrlToInlinePart);
   const result = await model.generateContent([prompt, ...imageParts]);
   const parsed = JSON.parse(result.response.text());
 
