@@ -17,6 +17,7 @@ import {
   Sparkles,
   ShoppingCart,
   Download,
+  BarChart3,
 } from "lucide-react";
 import { db, auth } from "./firebaseClient";
 import {
@@ -91,11 +92,92 @@ function buildEmptyForm(defaultFolderId) {
   };
 }
 
+function MetricsView({ stockLogs }) {
+  if (stockLogs.length === 0) {
+    return (
+      <div className="text-center text-stone-400 text-sm mt-16">
+        No stock changes logged yet. Metrics fill in as you restock, count, or use items.
+      </div>
+    );
+  }
+
+  const now = new Date();
+  const isThisMonth = (ts) => {
+    const d = new Date(ts);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  };
+  const thisMonthLogs = stockLogs.filter((l) => isThisMonth(l.timestamp));
+  const consumedThisMonth = thisMonthLogs
+    .filter((l) => l.reason === "Consumed")
+    .reduce((sum, l) => sum + Math.abs(l.delta), 0);
+  const restockedThisMonth = thisMonthLogs
+    .filter((l) => l.reason === "Restock")
+    .reduce((sum, l) => sum + l.delta, 0);
+
+  const sorted = [...stockLogs].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="bg-white border border-stone-200 rounded-md px-4 py-3">
+          <div className="text-xs text-stone-500">Changes logged</div>
+          <div className="text-lg font-semibold text-stone-900">{stockLogs.length}</div>
+        </div>
+        <div className="bg-white border border-stone-200 rounded-md px-4 py-3">
+          <div className="text-xs text-stone-500">Consumed this month</div>
+          <div className="text-lg font-semibold text-stone-900">{trimNum(consumedThisMonth)}</div>
+        </div>
+        <div className="bg-white border border-stone-200 rounded-md px-4 py-3">
+          <div className="text-xs text-stone-500">Restocked this month</div>
+          <div className="text-lg font-semibold text-stone-900">{trimNum(restockedThisMonth)}</div>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {sorted.map((l) => (
+          <div
+            key={l.id}
+            className="flex items-center justify-between bg-white border border-stone-200 rounded-md px-4 py-2.5 text-sm"
+          >
+            <div className="min-w-0">
+              <div className="font-medium text-stone-900 truncate">{l.itemName}</div>
+              <div className="text-xs text-stone-500">
+                {new Date(l.timestamp).toLocaleString("en-GB", {
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <div
+                className={`text-xs font-medium px-1.5 py-0.5 rounded inline-block ${
+                  l.reason === "Consumed"
+                    ? "bg-red-100 text-red-700"
+                    : l.reason === "Restock"
+                    ? "bg-teal-100 text-teal-700"
+                    : "bg-stone-100 text-stone-600"
+                }`}
+              >
+                {l.reason}
+              </div>
+              <div className="text-xs text-stone-500 mt-0.5">
+                {l.previousQuantity} → {l.newQuantity} {l.unit}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function InventoryApp() {
   const [folders, setFolders] = useState([]);
   const [items, setItems] = useState([]);
+  const [stockLogs, setStockLogs] = useState([]);
   const [currentFolderId, setCurrentFolderId] = useState(null);
-  const [specialView, setSpecialView] = useState(null); // null | "expiring" | "shopping"
+  const [specialView, setSpecialView] = useState(null); // null | "expiring" | "shopping" | "metrics"
   const [expanded, setExpanded] = useState({});
   const [search, setSearch] = useState("");
   const [showExpiringOnly, setShowExpiringOnly] = useState(false);
@@ -104,6 +186,9 @@ function InventoryApp() {
   useEffect(() => {
     getDocs(collection(db, "folders")).then((snap) => setFolders(snap.docs.map(folderFromDoc)));
     getDocs(collection(db, "items")).then((snap) => setItems(snap.docs.map(itemFromDoc)));
+    getDocs(collection(db, "stockLogs")).then((snap) =>
+      setStockLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    );
   }, []);
 
   const [showModal, setShowModal] = useState(false);
@@ -403,7 +488,7 @@ function InventoryApp() {
         setItems((its) => [{ id: docRef.id, ...fields }, ...its]);
       }
       if (quantityChanged) {
-        await addDoc(collection(db, "stockLogs"), {
+        const logEntry = {
           itemId: editingItemId,
           itemName: fields.name,
           previousQuantity: originalQuantityRef.current,
@@ -412,7 +497,9 @@ function InventoryApp() {
           reason: stockReason,
           unit: fields.unit,
           timestamp: new Date().toISOString(),
-        });
+        };
+        const logRef = await addDoc(collection(db, "stockLogs"), logEntry);
+        setStockLogs((logs) => [{ id: logRef.id, ...logEntry }, ...logs]);
       }
       removedPhotos.forEach(deletePhoto);
       closeItemModal();
@@ -601,6 +688,17 @@ function InventoryApp() {
               <span className="text-xs text-stone-400">{allShoppingListItems.length}</span>
             )}
           </button>
+          <button
+            onClick={() => selectSpecialView("metrics")}
+            className={`w-full flex items-center gap-2 rounded px-2 py-1.5 text-sm mb-1 ${
+              specialView === "metrics"
+                ? "bg-teal-50 text-teal-800 font-medium"
+                : "text-stone-700 hover:bg-stone-50"
+            }`}
+          >
+            <BarChart3 size={15} className={specialView === "metrics" ? "text-teal-700" : "text-stone-400"} />
+            <span className="flex-1 text-left truncate">Metrics</span>
+          </button>
           {rootFolders.map((f) => renderFolderNode(f, 0))}
         </div>
         <div className="p-2 border-t border-stone-200 space-y-1.5">
@@ -645,7 +743,11 @@ function InventoryApp() {
               <>
                 <ChevronRight size={14} />
                 <span className="text-stone-900 font-medium truncate">
-                  {specialView === "expiring" ? "Expiring / Expired" : "Shopping list"}
+                  {specialView === "expiring"
+                    ? "Expiring / Expired"
+                    : specialView === "shopping"
+                    ? "Shopping list"
+                    : "Metrics"}
                 </span>
               </>
             )}
@@ -668,50 +770,54 @@ function InventoryApp() {
           ) : null}
         </div>
 
-        <div className="px-5 py-3 border-b border-stone-200 bg-white">
-          <div className="flex items-center gap-2 bg-stone-100 rounded px-3 py-2 mb-3">
-            <Search size={15} className="text-stone-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={`Search ${currentPath.length ? currentPath[currentPath.length - 1].name : "all folders"}`}
-              className="bg-transparent outline-none text-sm flex-1 placeholder:text-stone-400"
-            />
-          </div>
-          {!specialView && (expiringSoonItems.length > 0 || showExpiringOnly) && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              <button
-                onClick={() => setShowExpiringOnly((v) => !v)}
-                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border ${
-                  showExpiringOnly
-                    ? "bg-amber-500 border-amber-500 text-white"
-                    : "border-stone-300 text-stone-600 hover:bg-stone-50"
-                }`}
-              >
-                <AlertTriangle size={12} /> Expiring soon ({expiringSoonItems.length})
-              </button>
+        {specialView !== "metrics" && (
+          <div className="px-5 py-3 border-b border-stone-200 bg-white">
+            <div className="flex items-center gap-2 bg-stone-100 rounded px-3 py-2 mb-3">
+              <Search size={15} className="text-stone-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${currentPath.length ? currentPath[currentPath.length - 1].name : "all folders"}`}
+                className="bg-transparent outline-none text-sm flex-1 placeholder:text-stone-400"
+              />
             </div>
-          )}
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-stone-600">
-            {!specialView && (
-              <span>
-                Folders: <b className="text-stone-900">{childrenOf(currentFolderId).length}</b>
-              </span>
+            {!specialView && (expiringSoonItems.length > 0 || showExpiringOnly) && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                <button
+                  onClick={() => setShowExpiringOnly((v) => !v)}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border ${
+                    showExpiringOnly
+                      ? "bg-amber-500 border-amber-500 text-white"
+                      : "border-stone-300 text-stone-600 hover:bg-stone-50"
+                  }`}
+                >
+                  <AlertTriangle size={12} /> Expiring soon ({expiringSoonItems.length})
+                </button>
+              </div>
             )}
-            <span>
-              Items: <b className="text-stone-900">{folderItems.length}</b>
-            </span>
-            <span>
-              Units: <b className="text-stone-900">{trimNum(totalUnits)}</b>
-            </span>
-            <span>
-              Total value: <b className="text-stone-900">${totalValue.toFixed(2)}</b>
-            </span>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-stone-600">
+              {!specialView && (
+                <span>
+                  Folders: <b className="text-stone-900">{childrenOf(currentFolderId).length}</b>
+                </span>
+              )}
+              <span>
+                Items: <b className="text-stone-900">{folderItems.length}</b>
+              </span>
+              <span>
+                Units: <b className="text-stone-900">{trimNum(totalUnits)}</b>
+              </span>
+              <span>
+                Total value: <b className="text-stone-900">${totalValue.toFixed(2)}</b>
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-5">
-          {visibleItems.length === 0 ? (
+          {specialView === "metrics" ? (
+            <MetricsView stockLogs={stockLogs} />
+          ) : visibleItems.length === 0 ? (
             <div className="text-center text-stone-400 text-sm mt-16">
               {specialView === "shopping" ? "Nothing low on stock." : "No items here yet."}
             </div>
