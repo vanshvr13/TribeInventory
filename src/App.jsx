@@ -14,6 +14,7 @@ import {
   Trash2,
   Menu,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 import { db, auth } from "./firebaseClient";
 import {
@@ -29,7 +30,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
-import { uploadPhoto, deletePhoto } from "./photoStorage";
+import { uploadPhoto, deletePhoto, resizePhoto } from "./photoStorage";
+import { identifyItemFromPhotos } from "./gemini";
 
 const UNITS = ["unit", "box", "kg", "g", "l", "ml", "pack"];
 
@@ -90,6 +92,7 @@ function InventoryApp() {
   const [confirmingDeleteItem, setConfirmingDeleteItem] = useState(false);
   const [form, setForm] = useState(buildEmptyForm(null));
   const [saving, setSaving] = useState(false);
+  const [identifying, setIdentifying] = useState(false);
   const originalPhotosRef = useRef([]);
   const [showInlineFolderForm, setShowInlineFolderForm] = useState(false);
   const [inlineFolderName, setInlineFolderName] = useState("");
@@ -229,16 +232,18 @@ function InventoryApp() {
     closeCamera();
   }
 
-  function handlePhotoSelect(e) {
+  async function handlePhotoSelect(e) {
     const files = Array.from(e.target.files || []).slice(0, 8 - form.photos.length);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setForm((f) => ({ ...f, photos: [...f.photos, reader.result].slice(0, 8) }));
-      };
-      reader.readAsDataURL(file);
-    });
     e.target.value = "";
+    for (const file of files) {
+      const dataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+      const resized = await resizePhoto(dataUrl);
+      setForm((f) => ({ ...f, photos: [...f.photos, resized].slice(0, 8) }));
+    }
   }
 
   async function openCamera() {
@@ -258,7 +263,7 @@ function InventoryApp() {
     setShowCamera(false);
   }
 
-  function capturePhoto() {
+  async function capturePhoto() {
     const video = videoRef.current;
     if (!video) return;
     const canvas = document.createElement("canvas");
@@ -266,7 +271,8 @@ function InventoryApp() {
     canvas.height = video.videoHeight;
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-    setForm((f) => ({ ...f, photos: [...f.photos, dataUrl].slice(0, 8) }));
+    const resized = await resizePhoto(dataUrl);
+    setForm((f) => ({ ...f, photos: [...f.photos, resized].slice(0, 8) }));
     closeCamera();
   }
 
@@ -276,6 +282,30 @@ function InventoryApp() {
 
   function selectFormFolder(id) {
     setForm((f) => ({ ...f, folderId: id }));
+  }
+
+  async function handleIdentify() {
+    if (form.photos.length === 0) return;
+    setIdentifying(true);
+    try {
+      const folderOptions = folders.map((f) => ({
+        id: f.id,
+        path: folderPath(f.id).map((p) => p.name).join(" > "),
+      }));
+      const result = await identifyItemFromPhotos(form.photos, folderOptions.map((o) => o.path));
+      const matchedFolder = folderOptions.find((o) => o.path === result.category);
+      setForm((f) => ({
+        ...f,
+        name: result.name || f.name,
+        brand: result.brand || f.brand,
+        expiry: result.expiryIso || f.expiry,
+        folderId: matchedFolder ? matchedFolder.id : f.folderId,
+      }));
+    } catch (err) {
+      alert("Could not identify photo: " + err.message);
+    } finally {
+      setIdentifying(false);
+    }
   }
 
   async function submitInlineFolder() {
@@ -696,6 +726,16 @@ function InventoryApp() {
                     onChange={handlePhotoSelect}
                   />
                 </div>
+                {form.photos.length > 0 && (
+                  <button
+                    onClick={handleIdentify}
+                    disabled={identifying}
+                    className="mt-2 w-full flex items-center justify-center gap-1.5 border border-teal-600 text-teal-700 hover:bg-teal-50 disabled:opacity-50 text-sm font-medium px-3 py-2 rounded"
+                  >
+                    <Sparkles size={15} />
+                    {identifying ? "Identifying…" : "Identify with AI"}
+                  </button>
+                )}
               </div>
 
               <div>
