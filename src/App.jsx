@@ -74,6 +74,8 @@ function itemFromDoc(d) {
     expiry: data.expiry || "",
     photos: data.photos || [],
     folderId: data.folderId,
+    createdAt: data.createdAt || null,
+    updatedAt: data.updatedAt || null,
   };
 }
 
@@ -478,6 +480,10 @@ function InventoryApp() {
         expiry: form.expiry === "" ? null : form.expiry,
         photos,
         folderId: form.folderId,
+        createdAt: editingItemId
+          ? items.find((it) => it.id === editingItemId)?.createdAt
+          : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       if (editingItemId) {
@@ -1117,6 +1123,20 @@ function InventoryApp() {
                   </div>
                 </div>
               </div>
+              {editingItemId &&
+                (() => {
+                  const editingItem = items.find((it) => it.id === editingItemId);
+                  return (
+                    <div className="text-xs text-stone-400">
+                      {editingItem?.createdAt && <>Added {expiryLabel(editingItem.createdAt)}</>}
+                      {editingItem?.updatedAt && (
+                        <>
+                          {editingItem?.createdAt && " · "}Last updated {expiryLabel(editingItem.updatedAt)}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
             </div>
             <div className="flex items-center justify-between px-5 py-4 border-t border-stone-200">
               {confirmingDeleteItem ? (
