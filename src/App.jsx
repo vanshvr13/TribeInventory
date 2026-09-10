@@ -34,6 +34,8 @@ function itemFromRow(row) {
     unit: row.unit,
     minLevel: row.min_level,
     price: row.price,
+    brand: row.brand || "",
+    expiry: row.expiry || "",
     photos: row.photos || [],
     folderId: row.folder_id,
   };
@@ -46,6 +48,8 @@ function buildEmptyForm(defaultFolderId) {
     unit: "unit",
     minLevel: "",
     price: "",
+    brand: "",
+    expiry: "",
     photos: [],
     folderId: defaultFolderId || null,
   };
@@ -192,6 +196,8 @@ function InventoryApp() {
       unit: item.unit,
       minLevel: item.minLevel === null || item.minLevel === undefined ? "" : String(item.minLevel),
       price: String(item.price),
+      brand: item.brand || "",
+      expiry: item.expiry || "",
       photos: item.photos,
       folderId: item.folderId,
     });
@@ -272,6 +278,8 @@ function InventoryApp() {
       unit: form.unit,
       minLevel: form.minLevel === "" ? null : Number(form.minLevel),
       price: Number(form.price) || 0,
+      brand: form.brand.trim() || null,
+      expiry: form.expiry === "" ? null : form.expiry,
       photos: form.photos,
       folderId: form.folderId,
     };
@@ -281,6 +289,8 @@ function InventoryApp() {
       unit: fields.unit,
       min_level: fields.minLevel,
       price: fields.price,
+      brand: fields.brand,
+      expiry: fields.expiry,
       photos: fields.photos,
       folder_id: fields.folderId,
     };
@@ -554,6 +564,26 @@ function InventoryApp() {
                   className="w-full border border-stone-300 rounded px-2.5 py-2 text-sm mt-1 outline-none focus:border-teal-600"
                   placeholder="e.g. Cheesecake 1.6kg"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-stone-500">Brand</label>
+                  <input
+                    value={form.brand}
+                    onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
+                    className="w-full border border-stone-300 rounded px-2.5 py-2 text-sm mt-1 outline-none focus:border-teal-600"
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-stone-500">Expiry date</label>
+                  <input
+                    type="date"
+                    value={form.expiry}
+                    onChange={(e) => setForm((f) => ({ ...f, expiry: e.target.value }))}
+                    className="w-full border border-stone-300 rounded px-2.5 py-2 text-sm mt-1 outline-none focus:border-teal-600"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
