@@ -15,6 +15,8 @@ import {
   Menu,
   LogOut,
   Sparkles,
+  ShoppingCart,
+  Download,
 } from "lucide-react";
 import { db, auth } from "./firebaseClient";
 import {
@@ -66,6 +68,7 @@ function itemFromDoc(d) {
     minLevel: data.minLevel ?? null,
     price: data.price,
     brand: data.brand || "",
+    provider: data.provider || "",
     expiry: data.expiry || "",
     photos: data.photos || [],
     folderId: data.folderId,
@@ -80,6 +83,7 @@ function buildEmptyForm(defaultFolderId) {
     minLevel: "",
     price: "",
     brand: "",
+    provider: "",
     expiry: "",
     photos: [],
     folderId: defaultFolderId || null,
@@ -90,6 +94,7 @@ function InventoryApp() {
   const [folders, setFolders] = useState([]);
   const [items, setItems] = useState([]);
   const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [specialView, setSpecialView] = useState(null); // null | "expiring" | "shopping"
   const [expanded, setExpanded] = useState({});
   const [search, setSearch] = useState("");
   const [showExpiringOnly, setShowExpiringOnly] = useState(false);
@@ -152,9 +157,19 @@ function InventoryApp() {
 
   const currentPath = currentFolderId ? folderPath(currentFolderId) : [];
 
-  const folderItems = currentFolderId
-    ? items.filter((it) => it.folderId === currentFolderId)
-    : items;
+  const allExpiringSoonItems = items.filter((it) => ["soon", "expired"].includes(expiryStatus(it.expiry)));
+  const allShoppingListItems = items
+    .filter((it) => it.minLevel !== null && it.quantity < it.minLevel)
+    .sort((a, b) => (a.provider || "").localeCompare(b.provider || ""));
+
+  const folderItems =
+    specialView === "expiring"
+      ? allExpiringSoonItems
+      : specialView === "shopping"
+      ? allShoppingListItems
+      : currentFolderId
+      ? items.filter((it) => it.folderId === currentFolderId)
+      : items;
 
   const expiringSoonItems = folderItems.filter((it) =>
     ["soon", "expired"].includes(expiryStatus(it.expiry))
@@ -183,6 +198,13 @@ function InventoryApp() {
 
   function selectFolder(id) {
     setCurrentFolderId(id);
+    setSpecialView(null);
+    setSidebarOpen(false);
+  }
+
+  function selectSpecialView(view) {
+    setSpecialView(view);
+    setCurrentFolderId(null);
     setSidebarOpen(false);
   }
 
@@ -238,6 +260,7 @@ function InventoryApp() {
       minLevel: item.minLevel === null || item.minLevel === undefined ? "" : String(item.minLevel),
       price: String(item.price),
       brand: item.brand || "",
+      provider: item.provider || "",
       expiry: item.expiry || "",
       photos: item.photos,
       folderId: item.folderId,
@@ -355,6 +378,7 @@ function InventoryApp() {
         minLevel: form.minLevel === "" ? null : Number(form.minLevel),
         price: Number(form.price) || 0,
         brand: form.brand.trim() || null,
+        provider: form.provider.trim() || null,
         expiry: form.expiry === "" ? null : form.expiry,
         photos,
         folderId: form.folderId,
@@ -414,6 +438,37 @@ function InventoryApp() {
     setItems((its) => its.filter((it) => !idsToDelete.includes(it.folderId)));
     if (idsToDelete.includes(currentFolderId)) setCurrentFolderId(null);
     setDeleteFolderId(null);
+  }
+
+  function csvCell(value) {
+    return `"${String(value ?? "").replace(/"/g, '""')}"`;
+  }
+
+  async function handleExportShoppingList() {
+    const header = ["Provider", "Name", "Brand", "Have", "Need", "Unit"].map(csvCell).join(",");
+    const rows = allShoppingListItems.map((it) =>
+      [it.provider || "", it.name, it.brand || "", trimNum(it.quantity), trimNum(it.minLevel - it.quantity), it.unit]
+        .map(csvCell)
+        .join(",")
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const file = new File([blob], "shopping-list.csv", { type: "text/csv" });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Shopping list" });
+        return;
+      } catch {
+        // user cancelled the share sheet or it failed — fall through to download
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "shopping-list.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function renderFolderNode(folder, depth) {
@@ -487,13 +542,41 @@ function InventoryApp() {
           <button
             onClick={() => selectFolder(null)}
             className={`w-full flex items-center gap-2 rounded px-2 py-1.5 text-sm mb-1 ${
-              currentFolderId === null
+              currentFolderId === null && !specialView
                 ? "bg-teal-50 text-teal-800 font-medium"
                 : "text-stone-700 hover:bg-stone-50"
             }`}
           >
-            <Package size={15} className={currentFolderId === null ? "text-teal-700" : "text-stone-400"} />
+            <Package size={15} className={currentFolderId === null && !specialView ? "text-teal-700" : "text-stone-400"} />
             All folders
+          </button>
+          <button
+            onClick={() => selectSpecialView("expiring")}
+            className={`w-full flex items-center gap-2 rounded px-2 py-1.5 text-sm mb-1 ${
+              specialView === "expiring"
+                ? "bg-teal-50 text-teal-800 font-medium"
+                : "text-stone-700 hover:bg-stone-50"
+            }`}
+          >
+            <AlertTriangle size={15} className={specialView === "expiring" ? "text-teal-700" : "text-stone-400"} />
+            <span className="flex-1 text-left truncate">Expiring / Expired</span>
+            {allExpiringSoonItems.length > 0 && (
+              <span className="text-xs text-stone-400">{allExpiringSoonItems.length}</span>
+            )}
+          </button>
+          <button
+            onClick={() => selectSpecialView("shopping")}
+            className={`w-full flex items-center gap-2 rounded px-2 py-1.5 text-sm mb-1 ${
+              specialView === "shopping"
+                ? "bg-teal-50 text-teal-800 font-medium"
+                : "text-stone-700 hover:bg-stone-50"
+            }`}
+          >
+            <ShoppingCart size={15} className={specialView === "shopping" ? "text-teal-700" : "text-stone-400"} />
+            <span className="flex-1 text-left truncate">Shopping list</span>
+            {allShoppingListItems.length > 0 && (
+              <span className="text-xs text-stone-400">{allShoppingListItems.length}</span>
+            )}
           </button>
           {rootFolders.map((f) => renderFolderNode(f, 0))}
         </div>
@@ -523,24 +606,43 @@ function InventoryApp() {
             >
               <Menu size={18} />
             </button>
-            <button onClick={() => setCurrentFolderId(null)} className="hover:text-stone-900">
+            <button onClick={() => selectFolder(null)} className="hover:text-stone-900">
               All folders
             </button>
-            {currentPath.map((f) => (
-              <React.Fragment key={f.id}>
+            {!specialView &&
+              currentPath.map((f) => (
+                <React.Fragment key={f.id}>
+                  <ChevronRight size={14} />
+                  <button onClick={() => selectFolder(f.id)} className="hover:text-stone-900 truncate">
+                    {f.name}
+                  </button>
+                </React.Fragment>
+              ))}
+            {specialView && (
+              <>
                 <ChevronRight size={14} />
-                <button onClick={() => setCurrentFolderId(f.id)} className="hover:text-stone-900 truncate">
-                  {f.name}
-                </button>
-              </React.Fragment>
-            ))}
+                <span className="text-stone-900 font-medium truncate">
+                  {specialView === "expiring" ? "Expiring / Expired" : "Shopping list"}
+                </span>
+              </>
+            )}
           </div>
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 text-white text-sm font-medium px-3 py-2 rounded"
-          >
-            <Plus size={16} /> Add item
-          </button>
+          {specialView === "shopping" ? (
+            <button
+              onClick={handleExportShoppingList}
+              disabled={allShoppingListItems.length === 0}
+              className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 disabled:bg-stone-300 text-white text-sm font-medium px-3 py-2 rounded"
+            >
+              <Download size={16} /> Export
+            </button>
+          ) : !specialView ? (
+            <button
+              onClick={openAddModal}
+              className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 text-white text-sm font-medium px-3 py-2 rounded"
+            >
+              <Plus size={16} /> Add item
+            </button>
+          ) : null}
         </div>
 
         <div className="px-5 py-3 border-b border-stone-200 bg-white">
@@ -553,7 +655,7 @@ function InventoryApp() {
               className="bg-transparent outline-none text-sm flex-1 placeholder:text-stone-400"
             />
           </div>
-          {(expiringSoonItems.length > 0 || showExpiringOnly) && (
+          {!specialView && (expiringSoonItems.length > 0 || showExpiringOnly) && (
             <div className="flex flex-wrap gap-2 mb-3">
               <button
                 onClick={() => setShowExpiringOnly((v) => !v)}
@@ -568,9 +670,11 @@ function InventoryApp() {
             </div>
           )}
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-stone-600">
-            <span>
-              Folders: <b className="text-stone-900">{childrenOf(currentFolderId).length}</b>
-            </span>
+            {!specialView && (
+              <span>
+                Folders: <b className="text-stone-900">{childrenOf(currentFolderId).length}</b>
+              </span>
+            )}
             <span>
               Items: <b className="text-stone-900">{folderItems.length}</b>
             </span>
@@ -585,7 +689,27 @@ function InventoryApp() {
 
         <div className="flex-1 overflow-y-auto p-5">
           {visibleItems.length === 0 ? (
-            <div className="text-center text-stone-400 text-sm mt-16">No items here yet.</div>
+            <div className="text-center text-stone-400 text-sm mt-16">
+              {specialView === "shopping" ? "Nothing low on stock." : "No items here yet."}
+            </div>
+          ) : specialView === "shopping" ? (
+            <div className="space-y-2">
+              {visibleItems.map((it) => (
+                <div
+                  key={it.id}
+                  onClick={() => openEditModal(it)}
+                  className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-md px-4 py-3 cursor-pointer hover:border-teal-400 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-stone-900 truncate">{it.name}</div>
+                    <div className="text-xs text-stone-500 truncate">{it.provider || "No provider set"}</div>
+                  </div>
+                  <div className="text-sm font-semibold text-amber-700 shrink-0">
+                    Need {trimNum(it.minLevel - it.quantity)} {it.unit}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {visibleItems.map((it) => {
@@ -682,6 +806,15 @@ function InventoryApp() {
                     className="w-full border border-stone-300 rounded px-2.5 py-2 text-sm mt-1 outline-none focus:border-teal-600"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-stone-500">Provider</label>
+                <input
+                  value={form.provider}
+                  onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
+                  className="w-full border border-stone-300 rounded px-2.5 py-2 text-sm mt-1 outline-none focus:border-teal-600"
+                  placeholder="Optional — who you buy this from"
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
