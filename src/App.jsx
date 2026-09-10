@@ -39,6 +39,18 @@ function trimNum(n) {
   return Number.isInteger(n) ? n : Math.round(n * 100) / 100;
 }
 
+function expiryStatus(expiry) {
+  if (!expiry) return "";
+  const daysUntil = (new Date(expiry) - new Date(new Date().toDateString())) / 86400000;
+  if (daysUntil < 0) return "expired";
+  if (daysUntil <= 7) return "soon";
+  return "ok";
+}
+
+function expiryLabel(expiry) {
+  return new Date(expiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
 function folderFromDoc(d) {
   const data = d.data();
   return { id: d.id, name: data.name, parentId: data.parentId ?? null };
@@ -80,6 +92,7 @@ function InventoryApp() {
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [search, setSearch] = useState("");
+  const [showExpiringOnly, setShowExpiringOnly] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -143,9 +156,19 @@ function InventoryApp() {
     ? items.filter((it) => it.folderId === currentFolderId)
     : items;
 
-  const visibleItems = folderItems.filter((it) =>
-    it.name.toLowerCase().includes(search.toLowerCase())
+  const expiringSoonItems = folderItems.filter((it) =>
+    ["soon", "expired"].includes(expiryStatus(it.expiry))
   );
+
+  const visibleItems = (showExpiringOnly ? expiringSoonItems : folderItems)
+    .filter((it) => it.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      if (!showExpiringOnly) return 0;
+      if (!a.expiry && !b.expiry) return 0;
+      if (!a.expiry) return 1;
+      if (!b.expiry) return -1;
+      return a.expiry.localeCompare(b.expiry);
+    });
 
   const totalUnits = folderItems.reduce((sum, it) => sum + Number(it.quantity), 0);
 
@@ -530,6 +553,20 @@ function InventoryApp() {
               className="bg-transparent outline-none text-sm flex-1 placeholder:text-stone-400"
             />
           </div>
+          {(expiringSoonItems.length > 0 || showExpiringOnly) && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={() => setShowExpiringOnly((v) => !v)}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border ${
+                  showExpiringOnly
+                    ? "bg-amber-500 border-amber-500 text-white"
+                    : "border-stone-300 text-stone-600 hover:bg-stone-50"
+                }`}
+              >
+                <AlertTriangle size={12} /> Expiring soon ({expiringSoonItems.length})
+              </button>
+            </div>
+          )}
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-stone-600">
             <span>
               Folders: <b className="text-stone-900">{childrenOf(currentFolderId).length}</b>
@@ -553,6 +590,7 @@ function InventoryApp() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {visibleItems.map((it) => {
                 const lowStock = it.minLevel !== null && it.quantity < it.minLevel;
+                const status = expiryStatus(it.expiry);
                 return (
                   <div
                     key={it.id}
@@ -581,6 +619,19 @@ function InventoryApp() {
                       <div className="text-sm font-semibold text-stone-900 mt-0.5">
                         ${(it.quantity * it.price).toFixed(2)}
                       </div>
+                      {it.expiry && (
+                        <div
+                          className={`text-xs mt-1 inline-block px-1.5 py-0.5 rounded ${
+                            status === "expired"
+                              ? "bg-red-100 text-red-700"
+                              : status === "soon"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-stone-100 text-stone-500"
+                          }`}
+                        >
+                          {expiryLabel(it.expiry)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
