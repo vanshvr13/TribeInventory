@@ -36,6 +36,7 @@ import { uploadPhoto, deletePhoto, resizePhoto } from "./photoStorage";
 import { identifyItemFromPhotos } from "./gemini";
 
 const UNITS = ["unit", "box", "kg", "g", "l", "ml", "pack"];
+const STOCK_REASONS = ["Restock", "Inventory count", "Consumed", "Returned"];
 
 function trimNum(n) {
   return Number.isInteger(n) ? n : Math.round(n * 100) / 100;
@@ -112,6 +113,8 @@ function InventoryApp() {
   const [saving, setSaving] = useState(false);
   const [identifying, setIdentifying] = useState(false);
   const originalPhotosRef = useRef([]);
+  const originalQuantityRef = useRef(null);
+  const [stockReason, setStockReason] = useState("");
   const [showInlineFolderForm, setShowInlineFolderForm] = useState(false);
   const [inlineFolderName, setInlineFolderName] = useState("");
   const fileInputRef = useRef(null);
@@ -245,6 +248,8 @@ function InventoryApp() {
     setEditingItemId(null);
     setForm(buildEmptyForm(currentFolderId));
     originalPhotosRef.current = [];
+    originalQuantityRef.current = null;
+    setStockReason("");
     setShowInlineFolderForm(false);
     setInlineFolderName("");
     setConfirmingDeleteItem(false);
@@ -266,6 +271,8 @@ function InventoryApp() {
       folderId: item.folderId,
     });
     originalPhotosRef.current = item.photos;
+    originalQuantityRef.current = item.quantity;
+    setStockReason("");
     setShowInlineFolderForm(false);
     setInlineFolderName("");
     setConfirmingDeleteItem(false);
@@ -364,6 +371,10 @@ function InventoryApp() {
 
   async function handleSaveItem() {
     if (!form.name.trim() || !form.folderId) return;
+    const newQuantity = Number(form.quantity) || 0;
+    const quantityChanged = editingItemId !== null && newQuantity !== originalQuantityRef.current;
+    if (quantityChanged && !stockReason) return;
+
     setSaving(true);
     try {
       const photos = await Promise.all(
@@ -373,7 +384,7 @@ function InventoryApp() {
 
       const fields = {
         name: form.name.trim(),
-        quantity: Number(form.quantity) || 0,
+        quantity: newQuantity,
         unit: form.unit,
         minLevel: form.minLevel === "" ? null : Number(form.minLevel),
         price: Number(form.price) || 0,
@@ -390,6 +401,18 @@ function InventoryApp() {
       } else {
         const docRef = await addDoc(collection(db, "items"), fields);
         setItems((its) => [{ id: docRef.id, ...fields }, ...its]);
+      }
+      if (quantityChanged) {
+        await addDoc(collection(db, "stockLogs"), {
+          itemId: editingItemId,
+          itemName: fields.name,
+          previousQuantity: originalQuantityRef.current,
+          newQuantity,
+          delta: newQuantity - originalQuantityRef.current,
+          reason: stockReason,
+          unit: fields.unit,
+          timestamp: new Date().toISOString(),
+        });
       }
       removedPhotos.forEach(deletePhoto);
       closeItemModal();
@@ -841,6 +864,23 @@ function InventoryApp() {
                   </select>
                 </div>
               </div>
+              {editingItemId !== null && Number(form.quantity) !== originalQuantityRef.current && (
+                <div>
+                  <label className="text-xs text-stone-500">Reason for quantity change</label>
+                  <select
+                    value={stockReason}
+                    onChange={(e) => setStockReason(e.target.value)}
+                    className="w-full border border-stone-300 rounded px-2.5 py-2 text-sm mt-1 outline-none focus:border-teal-600"
+                  >
+                    <option value="">Select a reason…</option>
+                    {STOCK_REASONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-stone-500">Min level</label>
@@ -1012,7 +1052,12 @@ function InventoryApp() {
                     </button>
                     <button
                       onClick={handleSaveItem}
-                      disabled={!form.name.trim() || !form.folderId || saving}
+                      disabled={
+                        !form.name.trim() ||
+                        !form.folderId ||
+                        saving ||
+                        (editingItemId !== null && Number(form.quantity) !== originalQuantityRef.current && !stockReason)
+                      }
                       className="bg-teal-700 hover:bg-teal-800 disabled:bg-stone-300 text-white text-sm font-medium px-4 py-2 rounded"
                     >
                       {saving ? "Saving…" : editingItemId ? "Save changes" : "Add item"}
