@@ -38,6 +38,7 @@ const STRINGS = {
     "stats.items": "Items",
     "stats.units": "Units",
     "stats.totalValue": "Total value",
+    "stats.restockCost": "Cost to restock",
     "stats.expiringSoon": "Expiring soon ({n})",
 
     "dash.summary": "Inventory Summary",
@@ -55,6 +56,8 @@ const STRINGS = {
     "empty.shopping": "Nothing low on stock.",
     "empty.search": "No items match your search.",
     "shopping.noProvider": "No provider set",
+    "shopping.preview": "Preview shopping list",
+    "shopping.total": "Total estimated cost",
 
     "act.changesLogged": "Changes logged",
     "act.consumedMonth": "Consumed this month",
@@ -146,6 +149,9 @@ const STRINGS = {
     "csv.have": "Have",
     "csv.need": "Need",
     "csv.unit": "Unit",
+    "csv.price": "Price/unit",
+    "csv.cost": "Est. cost",
+    "csv.total": "TOTAL",
   },
   ro: {
     "nav.dashboard": "Panou",
@@ -181,6 +187,7 @@ const STRINGS = {
     "stats.items": "Articole",
     "stats.units": "Unități",
     "stats.totalValue": "Valoare totală",
+    "stats.restockCost": "Cost de reaprovizionare",
     "stats.expiringSoon": "Expiră curând ({n})",
 
     "dash.summary": "Sumar inventar",
@@ -198,6 +205,8 @@ const STRINGS = {
     "empty.shopping": "Nimic sub stocul minim.",
     "empty.search": "Niciun articol nu corespunde căutării.",
     "shopping.noProvider": "Fără furnizor",
+    "shopping.preview": "Previzualizare listă de cumpărături",
+    "shopping.total": "Cost total estimat",
 
     "act.changesLogged": "Modificări înregistrate",
     "act.consumedMonth": "Consumat luna aceasta",
@@ -289,6 +298,9 @@ const STRINGS = {
     "csv.have": "Stoc",
     "csv.need": "Necesar",
     "csv.unit": "Unitate",
+    "csv.price": "Preț/unitate",
+    "csv.cost": "Cost estimat",
+    "csv.total": "TOTAL",
   },
 };
 

@@ -77,7 +77,7 @@ function FolderCard({ folder, itemCount, totalValue, thumbnail, onClick }) {
   );
 }
 
-export default function ItemsView({ view, items, folders, shoppingItems, expiringItems, onOpenItem, onOpenFolder }) {
+export default function ItemsView({ view, items, folders, shoppingItems, shoppingCost, expiringItems, onOpenItem, onOpenFolder }) {
   const { t, fmtMoney } = useSettings();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("name");
@@ -169,6 +169,11 @@ export default function ItemsView({ view, items, folders, shoppingItems, expirin
           <span>
             {t("stats.totalValue")}: <b className="text-stone-900">{fmtMoney(totalValue)}</b>
           </span>
+          {view.kind === "shopping" && (
+            <span>
+              {t("stats.restockCost")}: <b className="text-stone-900">{fmtMoney(shoppingCost)}</b>
+            </span>
+          )}
         </div>
       </div>
 
@@ -179,21 +184,31 @@ export default function ItemsView({ view, items, folders, shoppingItems, expirin
           </div>
         ) : view.kind === "shopping" ? (
           <div className="space-y-2 max-w-3xl">
-            {visible.map((it) => (
-              <div
-                key={it.id}
-                onClick={() => onOpenItem(it)}
-                className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-md px-4 py-3 cursor-pointer hover:border-teal-400 transition-colors"
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-stone-900 truncate">{it.name}</div>
-                  <div className="text-xs text-stone-500 truncate">{it.provider || t("shopping.noProvider")}</div>
+            {visible.map((it) => {
+              const need = it.minLevel - it.quantity;
+              const cost = Math.max(0, need) * Number(it.price || 0);
+              return (
+                <div
+                  key={it.id}
+                  onClick={() => onOpenItem(it)}
+                  className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-md px-4 py-3 cursor-pointer hover:border-teal-400 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-stone-900 truncate">{it.name}</div>
+                    <div className="text-xs text-stone-500 truncate">{it.provider || t("shopping.noProvider")}</div>
+                    <div className="text-xs text-stone-400 mt-0.5">
+                      {fmtMoney(it.price)} / {t(`unit.${it.unit}`)}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-semibold text-amber-700">
+                      {t("dash.need", { n: trimNum(need), unit: t(`unit.${it.unit}`) })}
+                    </div>
+                    <div className="text-xs text-stone-500 mt-0.5">{fmtMoney(cost)}</div>
+                  </div>
                 </div>
-                <div className="text-sm font-semibold text-amber-700 shrink-0">
-                  {t("dash.need", { n: trimNum(it.minLevel - it.quantity), unit: t(`unit.${it.unit}`) })}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">

@@ -14,7 +14,7 @@ import ActivityView from "./components/ActivityView.jsx";
 import ItemsView from "./components/ItemsView.jsx";
 import ItemModal from "./components/ItemModal.jsx";
 import LoginScreen from "./components/LoginScreen.jsx";
-import { FolderModal, DeleteFolderModal, SettingsModal } from "./components/modals.jsx";
+import { FolderModal, DeleteFolderModal, SettingsModal, ShoppingPreviewModal } from "./components/modals.jsx";
 
 function folderFromDoc(d) {
   const data = d.data();
@@ -99,6 +99,7 @@ function InventoryApp() {
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [deleteFolderId, setDeleteFolderId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showExportPreview, setShowExportPreview] = useState(false);
 
   useEffect(() => {
     getDocs(collection(db, "folders")).then((snap) => setFolders(snap.docs.map(folderFromDoc)));
@@ -361,21 +362,29 @@ function InventoryApp() {
   }
 
   // ---- Shopping list export ----
+  const shoppingCost = shoppingItems.reduce(
+    (sum, it) => sum + Math.max(0, it.minLevel - it.quantity) * Number(it.price || 0),
+    0
+  );
+
   async function handleExportShoppingList() {
-    const header = ["csv.provider", "csv.name", "csv.brand", "csv.have", "csv.need", "csv.unit"]
+    const header = ["csv.provider", "csv.name", "csv.brand", "csv.have", "csv.need", "csv.unit", "csv.price", "csv.cost"]
       .map((k) => csvCell(t(k)))
       .join(",");
-    const rows = shoppingItems.map((it) =>
-      [it.provider, it.name, it.brand, trimNum(it.quantity), trimNum(it.minLevel - it.quantity), t(`unit.${it.unit}`)]
+    const rows = shoppingItems.map((it) => {
+      const need = it.minLevel - it.quantity;
+      return [it.provider, it.name, it.brand, trimNum(it.quantity), trimNum(need), t(`unit.${it.unit}`), it.price, trimNum(Math.max(0, need) * it.price)]
         .map(csvCell)
-        .join(",")
-    );
-    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+        .join(",");
+    });
+    const totalRow = ["", t("csv.total"), "", "", "", "", "", trimNum(shoppingCost)].map(csvCell).join(",");
+    const blob = new Blob([[header, ...rows, totalRow].join("\n")], { type: "text/csv" });
     const file = new File([blob], "shopping-list.csv", { type: "text/csv" });
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: t("nav.shopping") });
+        setShowExportPreview(false);
         return;
       } catch {
         // user cancelled the share sheet — fall through to download
@@ -387,6 +396,7 @@ function InventoryApp() {
     a.download = "shopping-list.csv";
     a.click();
     URL.revokeObjectURL(url);
+    setShowExportPreview(false);
   }
 
   const viewLabels = {
@@ -449,7 +459,7 @@ function InventoryApp() {
           </div>
           {view.kind === "shopping" ? (
             <button
-              onClick={handleExportShoppingList}
+              onClick={() => setShowExportPreview(true)}
               disabled={shoppingItems.length === 0}
               className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 disabled:bg-stone-300 text-white text-sm font-medium px-3 py-2 rounded shrink-0"
             >
@@ -480,6 +490,7 @@ function InventoryApp() {
             items={items}
             folders={folders}
             shoppingItems={shoppingItems}
+            shoppingCost={shoppingCost}
             expiringItems={expiringItems}
             onOpenItem={openEditModal}
             onOpenFolder={(id) => selectView({ kind: "folder", folderId: id })}
@@ -525,6 +536,13 @@ function InventoryApp() {
         />
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showExportPreview && (
+        <ShoppingPreviewModal
+          items={shoppingItems}
+          onExport={handleExportShoppingList}
+          onClose={() => setShowExportPreview(false)}
+        />
+      )}
     </div>
   );
 }

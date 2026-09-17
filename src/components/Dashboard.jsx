@@ -4,9 +4,12 @@ import { useSettings } from "../lib/i18n.jsx";
 import { trimNum, formatWhen } from "../lib/format.js";
 import { ActivityLine } from "./ActivityView.jsx";
 
-function SummaryCard({ icon: Icon, iconCls, value, label }) {
+function SummaryCard({ icon: Icon, iconCls, value, label, onClick }) {
   return (
-    <div className="flex-1 min-w-[160px] bg-white border border-stone-200 rounded-lg px-5 py-4 flex items-center gap-4">
+    <button
+      onClick={onClick}
+      className="flex-1 min-w-[160px] bg-white border border-stone-200 rounded-lg px-5 py-4 flex items-center gap-4 text-left hover:border-teal-400 transition-colors"
+    >
       <div className={`rounded-full p-2.5 ${iconCls}`}>
         <Icon size={20} />
       </div>
@@ -14,7 +17,7 @@ function SummaryCard({ icon: Icon, iconCls, value, label }) {
         <div className="text-2xl font-bold text-stone-900 leading-tight">{value}</div>
         <div className="text-sm text-stone-500">{label}</div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -75,13 +78,26 @@ export default function Dashboard({ items, folders, logs, onOpenItem, onGo }) {
       <div>
         <h2 className="text-base font-semibold text-stone-900 mb-3">{t("dash.summary")}</h2>
         <div className="flex flex-wrap gap-3">
-          <SummaryCard icon={FileText} iconCls="bg-blue-100 text-blue-600" value={items.length} label={t("stats.items")} />
-          <SummaryCard icon={Folder} iconCls="bg-amber-100 text-amber-600" value={folders.length} label={t("stats.folders")} />
+          <SummaryCard
+            icon={FileText}
+            iconCls="bg-blue-100 text-blue-600"
+            value={items.length}
+            label={t("stats.items")}
+            onClick={() => onGo({ kind: "folder", folderId: null })}
+          />
+          <SummaryCard
+            icon={Folder}
+            iconCls="bg-amber-100 text-amber-600"
+            value={folders.length}
+            label={t("stats.folders")}
+            onClick={() => onGo({ kind: "folder", folderId: null })}
+          />
           <SummaryCard
             icon={Banknote}
             iconCls="bg-orange-100 text-orange-600"
             value={fmtMoneyCompact(totalValue)}
             label={t("stats.totalValue")}
+            onClick={() => onGo({ kind: "folder", folderId: null })}
           />
         </div>
       </div>
