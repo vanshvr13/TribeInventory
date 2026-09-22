@@ -6,7 +6,7 @@ import { db, auth } from "./firebaseClient";
 import { uploadPhoto, deletePhoto, resizePhoto } from "./photoStorage";
 import { identifyItemFromPhotos } from "./gemini";
 import { SettingsProvider, useSettings } from "./lib/i18n.jsx";
-import { trimNum, expiryStatus, csvCell } from "./lib/format.js";
+import { trimNum, expiryStatus, csvCell, groupByProvider } from "./lib/format.js";
 import { getDescendantFolderIds, folderPath as folderPathOf, flattenFolders as flattenFoldersOf } from "./lib/folders.js";
 import Sidebar from "./components/Sidebar.jsx";
 import Dashboard from "./components/Dashboard.jsx";
@@ -371,14 +371,27 @@ function InventoryApp() {
     const header = ["csv.provider", "csv.name", "csv.brand", "csv.have", "csv.need", "csv.unit", "csv.price", "csv.cost"]
       .map((k) => csvCell(t(k)))
       .join(",");
-    const rows = shoppingItems.map((it) => {
-      const need = it.minLevel - it.quantity;
-      return [it.provider, it.name, it.brand, trimNum(it.quantity), trimNum(need), t(`unit.${it.unit}`), it.price, trimNum(Math.max(0, need) * it.price)]
-        .map(csvCell)
-        .join(",");
-    });
-    const totalRow = ["", t("csv.total"), "", "", "", "", "", trimNum(shoppingCost)].map(csvCell).join(",");
-    const blob = new Blob([[header, ...rows, totalRow].join("\n")], { type: "text/csv" });
+    const lines = [header];
+    for (const { provider, items: groupItems } of groupByProvider(shoppingItems)) {
+      let groupCost = 0;
+      lines.push(""); // blank line separates each store's section
+      lines.push(csvCell(`— ${provider || t("shopping.noProvider")} —`));
+      for (const it of groupItems) {
+        const need = it.minLevel - it.quantity;
+        const cost = Math.max(0, need) * it.price;
+        groupCost += cost;
+        lines.push(
+          [it.provider, it.name, it.brand, trimNum(it.quantity), trimNum(need), t(`unit.${it.unit}`), it.price, trimNum(cost)]
+            .map(csvCell)
+            .join(",")
+        );
+      }
+      lines.push(["", t("csv.subtotal"), "", "", "", "", "", trimNum(groupCost)].map(csvCell).join(","));
+    }
+    lines.push("");
+    lines.push(["", t("csv.total"), "", "", "", "", "", trimNum(shoppingCost)].map(csvCell).join(","));
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const file = new File([blob], "shopping-list.csv", { type: "text/csv" });
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {

@@ -151,6 +151,7 @@ const STRINGS = {
     "csv.unit": "Unit",
     "csv.price": "Price/unit",
     "csv.cost": "Est. cost",
+    "csv.subtotal": "Subtotal",
     "csv.total": "TOTAL",
   },
   ro: {
@@ -300,6 +301,7 @@ const STRINGS = {
     "csv.unit": "Unitate",
     "csv.price": "Preț/unitate",
     "csv.cost": "Cost estimat",
+    "csv.subtotal": "Subtotal",
     "csv.total": "TOTAL",
   },
 };

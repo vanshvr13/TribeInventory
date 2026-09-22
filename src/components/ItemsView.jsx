@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Search, AlertTriangle, ImagePlus, ArrowUpDown, Folder as FolderIcon } from "lucide-react";
 import { useSettings } from "../lib/i18n.jsx";
-import { trimNum, expiryStatus, formatDate } from "../lib/format.js";
+import { trimNum, expiryStatus, formatDate, groupByProvider } from "../lib/format.js";
 import { getDescendantFolderIds } from "../lib/folders.js";
 
 const SORTS = {
@@ -183,28 +183,43 @@ export default function ItemsView({ view, items, folders, shoppingItems, shoppin
             {searching ? t("empty.search") : view.kind === "shopping" ? t("empty.shopping") : t("empty.items")}
           </div>
         ) : view.kind === "shopping" ? (
-          <div className="space-y-2 max-w-3xl">
-            {visible.map((it) => {
-              const need = it.minLevel - it.quantity;
-              const cost = Math.max(0, need) * Number(it.price || 0);
+          <div className="max-w-3xl space-y-5">
+            {groupByProvider(visible).map(({ provider, items: groupItems }) => {
+              const groupCost = groupItems.reduce(
+                (sum, it) => sum + Math.max(0, it.minLevel - it.quantity) * Number(it.price || 0),
+                0
+              );
               return (
-                <div
-                  key={it.id}
-                  onClick={() => onOpenItem(it)}
-                  className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-md px-4 py-3 cursor-pointer hover:border-teal-400 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-stone-900 truncate">{it.name}</div>
-                    <div className="text-xs text-stone-500 truncate">{it.provider || t("shopping.noProvider")}</div>
-                    <div className="text-xs text-stone-400 mt-0.5">
-                      {fmtMoney(it.price)} / {t(`unit.${it.unit}`)}
-                    </div>
+                <div key={provider || "__none__"}>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-stone-700">{provider || t("shopping.noProvider")}</h3>
+                    <span className="text-xs text-stone-500">{fmtMoney(groupCost)}</span>
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-sm font-semibold text-amber-700">
-                      {t("dash.need", { n: trimNum(need), unit: t(`unit.${it.unit}`) })}
-                    </div>
-                    <div className="text-xs text-stone-500 mt-0.5">{fmtMoney(cost)}</div>
+                  <div className="space-y-2">
+                    {groupItems.map((it) => {
+                      const need = it.minLevel - it.quantity;
+                      const cost = Math.max(0, need) * Number(it.price || 0);
+                      return (
+                        <div
+                          key={it.id}
+                          onClick={() => onOpenItem(it)}
+                          className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-md px-4 py-3 cursor-pointer hover:border-teal-400 transition-colors"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-stone-900 truncate">{it.name}</div>
+                            <div className="text-xs text-stone-400 mt-0.5">
+                              {fmtMoney(it.price)} / {t(`unit.${it.unit}`)}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-sm font-semibold text-amber-700">
+                              {t("dash.need", { n: trimNum(need), unit: t(`unit.${it.unit}`) })}
+                            </div>
+                            <div className="text-xs text-stone-500 mt-0.5">{fmtMoney(cost)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

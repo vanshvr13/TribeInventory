@@ -41,3 +41,22 @@ export function formatWhen(iso, lang = "en") {
 export function csvCell(value) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
+
+// Groups items by provider (insertion order preserved within each group), providers
+// sorted A-Z with items that have no provider set grouped last.
+export function groupByProvider(items) {
+  const map = new Map();
+  for (const it of items) {
+    const key = it.provider || "";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(it);
+  }
+  return [...map.entries()]
+    .map(([provider, groupItems]) => ({ provider, items: groupItems }))
+    .sort((a, b) => {
+      if (!a.provider && !b.provider) return 0;
+      if (!a.provider) return 1;
+      if (!b.provider) return -1;
+      return a.provider.localeCompare(b.provider);
+    });
+}
