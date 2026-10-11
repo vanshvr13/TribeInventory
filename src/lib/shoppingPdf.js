@@ -4,8 +4,9 @@ import { trimNum } from "./format.js";
 const MARGIN = 14;
 const PAGE_W = 210;
 const PAGE_H = 297;
-const THUMB_MM = 14;
-const THUMB_PX = 72; // small + heavily compressed keeps the PDF light enough to forward easily
+const THUMB_MM = 22; // bigger on the page so the product is actually recognizable
+const THUMB_PX = 220; // ~250dpi at THUMB_MM — crisp even zoomed in on a phone
+const THUMB_QUALITY = 0.8;
 
 const INK = [28, 25, 23]; // stone-900
 const MUTED = [120, 113, 108]; // stone-500
@@ -39,7 +40,7 @@ async function toThumbnail(url) {
     ctx.fillStyle = "#f5f5f4";
     ctx.fillRect(0, 0, THUMB_PX, THUMB_PX);
     ctx.drawImage(bitmap, (THUMB_PX - w) / 2, (THUMB_PX - h) / 2, w, h);
-    return canvas.toDataURL("image/jpeg", 0.5);
+    return canvas.toDataURL("image/jpeg", THUMB_QUALITY);
   } catch {
     return null;
   }
@@ -115,29 +116,30 @@ export async function generateShoppingListPdf(groups, { t, fmtMoney, totalCost }
       }
 
       const textX = MARGIN + THUMB_MM + 4;
+      const midY = y + THUMB_MM / 2;
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(10.5);
       doc.setTextColor(...INK);
-      doc.text(it.name, textX, y + 5, { maxWidth: 95 });
+      doc.text(it.name, textX, midY - 3, { maxWidth: 90 });
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.5);
+      doc.setFontSize(9);
       doc.setTextColor(...MUTED);
       doc.text(
         `${t("shopping.have")} ${trimNum(it.quantity)} · ${t("shopping.min")} ${trimNum(it.minLevel)} ${unit}`,
         textX,
-        y + 10.5
+        midY + 3
       );
 
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(10.5);
       doc.setTextColor(...ACCENT);
-      doc.text(`${t("shopping.needLabel")} ${trimNum(need)} ${unit}`, PAGE_W - MARGIN, y + 5, { align: "right" });
+      doc.text(`${t("shopping.needLabel")} ${trimNum(need)} ${unit}`, PAGE_W - MARGIN, midY - 3, { align: "right" });
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.5);
+      doc.setFontSize(9);
       doc.setTextColor(...MUTED);
-      doc.text(fmtMoney(cost), PAGE_W - MARGIN, y + 10.5, { align: "right" });
+      doc.text(fmtMoney(cost), PAGE_W - MARGIN, midY + 3, { align: "right" });
 
       y += THUMB_MM + 3;
     }
