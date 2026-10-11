@@ -3,7 +3,7 @@ import { useSettings, CURRENCIES } from "../lib/i18n.jsx";
 import { trimNum, groupByProvider } from "../lib/format.js";
 import { Modal, Field, inputCls, btnPrimary, btnGhost } from "./ui.jsx";
 
-export function ShoppingPreviewModal({ items, onExport, onClose }) {
+export function ShoppingPreviewModal({ items, generating, onExport, onClose }) {
   const { t, fmtMoney } = useSettings();
   const cost = (it) => Math.max(0, it.minLevel - it.quantity) * Number(it.price || 0);
   const totalCost = items.reduce((sum, it) => sum + cost(it), 0);
@@ -23,8 +23,8 @@ export function ShoppingPreviewModal({ items, onExport, onClose }) {
             <button onClick={onClose} className={btnGhost}>
               {t("btn.cancel")}
             </button>
-            <button onClick={onExport} className={btnPrimary}>
-              {t("btn.export")}
+            <button onClick={onExport} disabled={generating} className={btnPrimary}>
+              {generating ? t("shopping.generating") : t("btn.export")}
             </button>
           </div>
         </>
@@ -44,6 +44,9 @@ export function ShoppingPreviewModal({ items, onExport, onClose }) {
                   <div key={it.id} className="flex items-center justify-between gap-3 border border-stone-200 rounded-md px-3 py-2 text-sm">
                     <div className="min-w-0">
                       <div className="font-medium text-stone-900 truncate">{it.name}</div>
+                      <div className="text-xs text-stone-400">
+                        {t("shopping.have")} {trimNum(it.quantity)} · {t("shopping.min")} {trimNum(it.minLevel)} {t(`unit.${it.unit}`)}
+                      </div>
                       <div className="text-xs text-stone-400">
                         {fmtMoney(it.price)} / {t(`unit.${it.unit}`)}
                       </div>

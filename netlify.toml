@@ -1,0 +1,11 @@
+# Proxies Firebase Storage photo requests through this site's own origin.
+# Firebase Storage doesn't send CORS headers, which blocks browser `fetch()` of
+# photos (needed to embed them in the shopping-list PDF). Routing through a
+# same-origin path sidesteps CORS entirely — the browser never sees it as
+# cross-origin. Plain <img src> display elsewhere in the app doesn't need this;
+# only code that reads pixel data (canvas/fetch) does.
+[[redirects]]
+  from = "/storage-proxy/*"
+  to = "https://firebasestorage.googleapis.com/:splat"
+  status = 200
+  force = true

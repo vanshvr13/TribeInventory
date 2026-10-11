@@ -6,8 +6,9 @@ import { db, auth } from "./firebaseClient";
 import { uploadPhoto, deletePhoto, resizePhoto } from "./photoStorage";
 import { identifyItemFromPhotos } from "./gemini";
 import { SettingsProvider, useSettings } from "./lib/i18n.jsx";
-import { trimNum, expiryStatus, csvCell, groupByProvider } from "./lib/format.js";
+import { trimNum, expiryStatus, groupByProvider } from "./lib/format.js";
 import { getDescendantFolderIds, folderPath as folderPathOf, flattenFolders as flattenFoldersOf } from "./lib/folders.js";
+import { generateShoppingListPdf } from "./lib/shoppingPdf.js";
 import Sidebar from "./components/Sidebar.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ActivityView from "./components/ActivityView.jsx";
@@ -76,7 +77,7 @@ function diffFields(orig, fields) {
 }
 
 function InventoryApp() {
-  const { t, lang } = useSettings();
+  const { t, lang, fmtMoney } = useSettings();
   const [folders, setFolders] = useState([]);
   const [items, setItems] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -100,6 +101,7 @@ function InventoryApp() {
   const [deleteFolderId, setDeleteFolderId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showExportPreview, setShowExportPreview] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     getDocs(collection(db, "folders")).then((snap) => setFolders(snap.docs.map(folderFromDoc)));
@@ -368,48 +370,32 @@ function InventoryApp() {
   );
 
   async function handleExportShoppingList() {
-    const header = ["csv.provider", "csv.name", "csv.brand", "csv.have", "csv.need", "csv.unit", "csv.price", "csv.cost"]
-      .map((k) => csvCell(t(k)))
-      .join(",");
-    const lines = [header];
-    for (const { provider, items: groupItems } of groupByProvider(shoppingItems)) {
-      let groupCost = 0;
-      lines.push(""); // blank line separates each store's section
-      lines.push(csvCell(`— ${provider || t("shopping.noProvider")} —`));
-      for (const it of groupItems) {
-        const need = it.minLevel - it.quantity;
-        const cost = Math.max(0, need) * it.price;
-        groupCost += cost;
-        lines.push(
-          [it.provider, it.name, it.brand, trimNum(it.quantity), trimNum(need), t(`unit.${it.unit}`), it.price, trimNum(cost)]
-            .map(csvCell)
-            .join(",")
-        );
-      }
-      lines.push(["", t("csv.subtotal"), "", "", "", "", "", trimNum(groupCost)].map(csvCell).join(","));
-    }
-    lines.push("");
-    lines.push(["", t("csv.total"), "", "", "", "", "", trimNum(shoppingCost)].map(csvCell).join(","));
+    setExportingPdf(true);
+    try {
+      const blob = await generateShoppingListPdf(groupByProvider(shoppingItems), { t, fmtMoney, totalCost: shoppingCost });
+      const file = new File([blob], "shopping-list.pdf", { type: "application/pdf" });
 
-    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-    const file = new File([blob], "shopping-list.csv", { type: "text/csv" });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: t("nav.shopping") });
-        setShowExportPreview(false);
-        return;
-      } catch {
-        // user cancelled the share sheet — fall through to download
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: t("nav.shopping") });
+          setShowExportPreview(false);
+          return;
+        } catch {
+          // user cancelled the share sheet — fall through to download
+        }
       }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "shopping-list.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+      setShowExportPreview(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setExportingPdf(false);
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "shopping-list.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-    setShowExportPreview(false);
   }
 
   const viewLabels = {
@@ -552,6 +538,7 @@ function InventoryApp() {
       {showExportPreview && (
         <ShoppingPreviewModal
           items={shoppingItems}
+          generating={exportingPdf}
           onExport={handleExportShoppingList}
           onClose={() => setShowExportPreview(false)}
         />

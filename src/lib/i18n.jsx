@@ -58,6 +58,9 @@ const STRINGS = {
     "shopping.noProvider": "No provider set",
     "shopping.preview": "Preview shopping list",
     "shopping.total": "Total estimated cost",
+    "shopping.have": "Have",
+    "shopping.min": "Min",
+    "shopping.generating": "Generating…",
 
     "act.changesLogged": "Changes logged",
     "act.consumedMonth": "Consumed this month",
@@ -143,16 +146,7 @@ const STRINGS = {
     "login.loading": "Signing in…",
     "app.loading": "Loading…",
 
-    "csv.provider": "Provider",
-    "csv.name": "Name",
-    "csv.brand": "Brand",
-    "csv.have": "Have",
-    "csv.need": "Need",
-    "csv.unit": "Unit",
-    "csv.price": "Price/unit",
-    "csv.cost": "Est. cost",
-    "csv.subtotal": "Subtotal",
-    "csv.total": "TOTAL",
+    "shopping.needLabel": "Need",
   },
   ro: {
     "nav.dashboard": "Panou",
@@ -208,6 +202,9 @@ const STRINGS = {
     "shopping.noProvider": "Fără furnizor",
     "shopping.preview": "Previzualizare listă de cumpărături",
     "shopping.total": "Cost total estimat",
+    "shopping.have": "Stoc",
+    "shopping.min": "Min",
+    "shopping.generating": "Se generează…",
 
     "act.changesLogged": "Modificări înregistrate",
     "act.consumedMonth": "Consumat luna aceasta",
@@ -294,15 +291,7 @@ const STRINGS = {
     "app.loading": "Se încarcă…",
 
     "csv.provider": "Furnizor",
-    "csv.name": "Nume",
-    "csv.brand": "Marcă",
-    "csv.have": "Stoc",
-    "csv.need": "Necesar",
-    "csv.unit": "Unitate",
-    "csv.price": "Preț/unitate",
-    "csv.cost": "Cost estimat",
-    "csv.subtotal": "Subtotal",
-    "csv.total": "TOTAL",
+    "shopping.needLabel": "Necesar",
   },
 };
 
