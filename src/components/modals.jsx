@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useSettings, CURRENCIES } from "../lib/i18n.jsx";
 import { trimNum, groupByProvider } from "../lib/format.js";
+import { flattenFolders } from "../lib/folders.js";
 import { Modal, Field, inputCls, btnPrimary, btnGhost } from "./ui.jsx";
 
 export function ShoppingPreviewModal({ items, generating, onExport, onClose }) {
@@ -64,6 +65,99 @@ export function ShoppingPreviewModal({ items, generating, onExport, onClose }) {
           );
         })}
       </div>
+    </Modal>
+  );
+}
+
+export function ExportModal({ folders, items, generating, onExport, onClose }) {
+  const { t } = useSettings();
+  const [fileType, setFileType] = useState("csv");
+  const [selected, setSelected] = useState(() => new Set(folders.map((f) => f.id)));
+  const flat = flattenFolders(folders, null, 0);
+
+  function toggle(id) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const selectedItems = items.filter((it) => selected.has(it.folderId));
+  const typeBtnCls = (active) =>
+    `flex-1 border rounded px-3 py-2 text-sm font-medium ${
+      active ? "border-teal-600 bg-teal-50 text-teal-800" : "border-stone-300 text-stone-600 hover:bg-stone-50"
+    }`;
+
+  return (
+    <Modal
+      title={t("export.title")}
+      onClose={onClose}
+      maxW="max-w-md"
+      footer={
+        <>
+          <span className="text-sm text-stone-600">{t("export.itemCount", { n: selectedItems.length })}</span>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className={btnGhost}>
+              {t("btn.cancel")}
+            </button>
+            <button
+              onClick={() => onExport(fileType, selectedItems)}
+              disabled={generating || selectedItems.length === 0}
+              className={btnPrimary}
+            >
+              {generating ? t("shopping.generating") : t("btn.export")}
+            </button>
+          </div>
+        </>
+      }
+    >
+      <Field label={t("export.fileType")}>
+        <div className="flex gap-2 mt-1">
+          <button onClick={() => setFileType("csv")} className={typeBtnCls(fileType === "csv")}>
+            CSV
+          </button>
+          <button onClick={() => setFileType("pdf")} className={typeBtnCls(fileType === "pdf")}>
+            PDF
+          </button>
+        </div>
+      </Field>
+
+      <Field label={t("export.folders")}>
+        <div className="flex items-center gap-3 mt-1 mb-1.5">
+          <button
+            onClick={() => setSelected(new Set(folders.map((f) => f.id)))}
+            className="text-xs text-teal-700 hover:underline"
+          >
+            {t("export.selectAll")}
+          </button>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-teal-700 hover:underline">
+            {t("export.selectNone")}
+          </button>
+        </div>
+        <div className="border border-stone-200 rounded max-h-64 overflow-y-auto divide-y divide-stone-100">
+          {flat.map((f) => {
+            const count = items.filter((it) => it.folderId === f.id).length;
+            return (
+              <label
+                key={f.id}
+                className="flex items-center gap-2 py-1.5 pr-2.5 text-sm hover:bg-stone-50 cursor-pointer"
+                style={{ paddingLeft: `${10 + f.depth * 16}px` }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(f.id)}
+                  onChange={() => toggle(f.id)}
+                  className="accent-teal-700"
+                />
+                <span className="flex-1 truncate">{f.name}</span>
+                <span className="text-xs text-stone-400">{count}</span>
+              </label>
+            );
+          })}
+        </div>
+      </Field>
     </Modal>
   );
 }

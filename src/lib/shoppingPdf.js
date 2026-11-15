@@ -1,50 +1,17 @@
 import { jsPDF } from "jspdf";
 import { trimNum } from "./format.js";
+import { toThumbnail } from "./photoThumbnail.js";
 
 const MARGIN = 14;
 const PAGE_W = 210;
 const PAGE_H = 297;
 const THUMB_MM = 22; // bigger on the page so the product is actually recognizable
-const THUMB_PX = 220; // ~250dpi at THUMB_MM — crisp even zoomed in on a phone
-const THUMB_QUALITY = 0.8;
 
 const INK = [28, 25, 23]; // stone-900
 const MUTED = [120, 113, 108]; // stone-500
 const ACCENT = [180, 83, 9]; // amber-700
 const RULE = [214, 211, 209]; // stone-300
 const PLACEHOLDER = [245, 245, 244]; // stone-100
-
-// Firebase Storage doesn't send CORS headers, so a direct cross-origin fetch() is
-// blocked by the browser. Routing through this site's own /storage-proxy (see
-// netlify.toml and vite.config.js) makes it same-origin instead, which sidesteps
-// CORS entirely without needing any bucket configuration.
-function proxied(url) {
-  return url.replace(/^https:\/\/firebasestorage\.googleapis\.com/, "/storage-proxy");
-}
-
-// Fetches a photo and re-encodes it as a tiny square JPEG data URL for embedding.
-// Returns null (never throws) so one broken photo can't fail the whole export.
-async function toThumbnail(url) {
-  try {
-    const res = await fetch(proxied(url));
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const bitmap = await createImageBitmap(blob);
-    const scale = Math.min(1, THUMB_PX / Math.max(bitmap.width, bitmap.height));
-    const w = Math.max(1, Math.round(bitmap.width * scale));
-    const h = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = THUMB_PX;
-    canvas.height = THUMB_PX;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#f5f5f4";
-    ctx.fillRect(0, 0, THUMB_PX, THUMB_PX);
-    ctx.drawImage(bitmap, (THUMB_PX - w) / 2, (THUMB_PX - h) / 2, w, h);
-    return canvas.toDataURL("image/jpeg", THUMB_QUALITY);
-  } catch {
-    return null;
-  }
-}
 
 function groupCostOf(items) {
   return items.reduce((sum, it) => sum + Math.max(0, it.minLevel - it.quantity) * Number(it.price || 0), 0);

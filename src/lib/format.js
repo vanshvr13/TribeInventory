@@ -42,6 +42,15 @@ export function csvCell(value) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
+export function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // Groups items by provider (insertion order preserved within each group), providers
 // sorted A-Z with items that have no provider set grouped last.
 export function groupByProvider(items) {

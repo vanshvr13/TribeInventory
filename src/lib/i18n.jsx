@@ -147,6 +147,13 @@ const STRINGS = {
     "app.loading": "Loading…",
 
     "shopping.needLabel": "Need",
+
+    "export.title": "Export inventory",
+    "export.fileType": "File type",
+    "export.folders": "Folders to include",
+    "export.selectAll": "Select all",
+    "export.selectNone": "Select none",
+    "export.itemCount": "{n} items selected",
   },
   ro: {
     "nav.dashboard": "Panou",
@@ -292,6 +299,13 @@ const STRINGS = {
 
     "csv.provider": "Furnizor",
     "shopping.needLabel": "Necesar",
+
+    "export.title": "Exportă inventarul",
+    "export.fileType": "Tip fișier",
+    "export.folders": "Foldere de inclus",
+    "export.selectAll": "Selectează tot",
+    "export.selectNone": "Deselectează tot",
+    "export.itemCount": "{n} articole selectate",
   },
 };
 

@@ -6,16 +6,18 @@ import { db, auth } from "./firebaseClient";
 import { uploadPhoto, deletePhoto, resizePhoto } from "./photoStorage";
 import { identifyItemFromPhotos } from "./gemini";
 import { SettingsProvider, useSettings } from "./lib/i18n.jsx";
-import { trimNum, expiryStatus, groupByProvider } from "./lib/format.js";
+import { trimNum, expiryStatus, groupByProvider, downloadBlob } from "./lib/format.js";
 import { getDescendantFolderIds, folderPath as folderPathOf, flattenFolders as flattenFoldersOf } from "./lib/folders.js";
 import { generateShoppingListPdf } from "./lib/shoppingPdf.js";
+import { generateItemsPdf } from "./lib/exportPdf.js";
+import { generateItemsCsv } from "./lib/exportCsv.js";
 import Sidebar from "./components/Sidebar.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ActivityView from "./components/ActivityView.jsx";
 import ItemsView from "./components/ItemsView.jsx";
 import ItemModal from "./components/ItemModal.jsx";
 import LoginScreen from "./components/LoginScreen.jsx";
-import { FolderModal, DeleteFolderModal, SettingsModal, ShoppingPreviewModal } from "./components/modals.jsx";
+import { FolderModal, DeleteFolderModal, SettingsModal, ShoppingPreviewModal, ExportModal } from "./components/modals.jsx";
 
 function folderFromDoc(d) {
   const data = d.data();
@@ -102,6 +104,8 @@ function InventoryApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportingInventory, setExportingInventory] = useState(false);
 
   useEffect(() => {
     getDocs(collection(db, "folders")).then((snap) => setFolders(snap.docs.map(folderFromDoc)));
@@ -384,17 +388,58 @@ function InventoryApp() {
           // user cancelled the share sheet — fall through to download
         }
       }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "shopping-list.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, "shopping-list.pdf");
       setShowExportPreview(false);
     } catch (err) {
       alert(err.message);
     } finally {
       setExportingPdf(false);
+    }
+  }
+
+  // ---- Inventory export (dashboard) ----
+  function groupItemsByFolder(selectedItems) {
+    const map = new Map();
+    for (const it of selectedItems) {
+      const path = folderPath(it.folderId).map((f) => f.name).join(" > ");
+      if (!map.has(path)) map.set(path, []);
+      map.get(path).push(it);
+    }
+    return [...map.entries()]
+      .map(([path, groupItems]) => ({ path, items: groupItems }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  async function handleExportInventory(fileType, selectedItems) {
+    setExportingInventory(true);
+    try {
+      if (fileType === "csv") {
+        const blob = generateItemsCsv(selectedItems, {
+          t,
+          folderPathLabel: (id) => folderPath(id).map((f) => f.name).join(" > "),
+        });
+        downloadBlob(blob, "inventory-export.csv");
+        setShowExportModal(false);
+        return;
+      }
+
+      const blob = await generateItemsPdf(groupItemsByFolder(selectedItems), { t, fmtMoney, title: t("export.title") });
+      const file = new File([blob], "inventory-export.pdf", { type: "application/pdf" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: t("export.title") });
+          setShowExportModal(false);
+          return;
+        } catch {
+          // user cancelled the share sheet — fall through to download
+        }
+      }
+      downloadBlob(blob, "inventory-export.pdf");
+      setShowExportModal(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setExportingInventory(false);
     }
   }
 
@@ -464,7 +509,22 @@ function InventoryApp() {
             >
               <Download size={16} /> {t("btn.export")}
             </button>
-          ) : view.kind === "folder" || view.kind === "dashboard" ? (
+          ) : view.kind === "dashboard" ? (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowExportModal(true)}
+                className="flex items-center gap-1.5 border border-stone-300 hover:bg-stone-50 text-stone-700 text-sm font-medium px-3 py-2 rounded"
+              >
+                <Download size={16} /> {t("btn.export")}
+              </button>
+              <button
+                onClick={openAddModal}
+                className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 text-white text-sm font-medium px-3 py-2 rounded"
+              >
+                <Plus size={16} /> {t("btn.addItem")}
+              </button>
+            </div>
+          ) : view.kind === "folder" ? (
             <button
               onClick={openAddModal}
               className="flex items-center gap-1.5 bg-teal-700 hover:bg-teal-800 text-white text-sm font-medium px-3 py-2 rounded shrink-0"
@@ -535,6 +595,15 @@ function InventoryApp() {
         />
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showExportModal && (
+        <ExportModal
+          folders={folders}
+          items={items}
+          generating={exportingInventory}
+          onExport={handleExportInventory}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
       {showExportPreview && (
         <ShoppingPreviewModal
           items={shoppingItems}
